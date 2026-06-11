@@ -5,123 +5,49 @@ import { useToast } from '../hooks/useToast'
 import { ToastContainer } from '../components/ui/Toast'
 import { Spinner } from '../components/ui/Spinner'
 
-// ── Project Field Group ───────────────────────────────────────────────────────
+const nullify = (v) => (v && v.trim() !== '' ? v.trim() : null)
 
-function ProjectFields({ label, values, onChange }) {
-  return (
-    <div className="bg-[#1f1f1f] border border-[#444748] p-4 rounded-2xl space-y-3">
-      <h3 className="font-mono text-[12px] uppercase text-white font-bold tracking-widest">{label}</h3>
-      <div className="space-y-3">
-        <div className="group">
-          <label
-            className="font-mono text-[12px] uppercase mb-2 block text-[#8e9192] group-focus-within:text-white tracking-widest"
-            htmlFor={`${label}-name`}
-          >
-            Project Name
-          </label>
-          <input
-            id={`${label}-name`}
-            className="input-base"
-            placeholder="Enter project name"
-            value={values.name}
-            onChange={e => onChange('name', sanitize(e.target.value))}
-            maxLength={120}
-          />
-        </div>
+// ── Project Card (independent save) ──────────────────────────────────────────
 
-        <div className="group">
-          <label
-            className="font-mono text-[12px] uppercase mb-2 block text-[#8e9192] group-focus-within:text-white tracking-widest"
-            htmlFor={`${label}-tech`}
-          >
-            Technologies Used
-          </label>
-          <input
-            id={`${label}-tech`}
-            className="input-base"
-            placeholder="e.g., Python, React, Node.js"
-            value={values.tech}
-            onChange={e => onChange('tech', sanitize(e.target.value))}
-            maxLength={200}
-          />
-        </div>
-
-        <div className="group">
-          <label
-            className="font-mono text-[12px] uppercase mb-2 block text-[#8e9192] group-focus-within:text-white tracking-widest"
-            htmlFor={`${label}-link`}
-          >
-            GitHub Link
-          </label>
-          <input
-            id={`${label}-link`}
-            className={`input-base ${values.link && !isValidGithubUrl(values.link) ? 'input-error' : ''}`}
-            placeholder="https://github.com/....."
-            value={values.link}
-            onChange={e => onChange('link', e.target.value.trim())}
-            type="url"
-            maxLength={300}
-            aria-describedby={`${label}-link-hint`}
-          />
-          {values.link && !isValidGithubUrl(values.link) && (
-            <p id={`${label}-link-hint`} className="text-[#ffb4ab] font-mono text-[11px] mt-1 px-2">
-              Must be a valid github.com URL
-            </p>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── Submission Dashboard ──────────────────────────────────────────────────────
-
-function SubmissionDashboard({ studentDbId, initial, onLogout, showToast }) {
-  const [projects, setProjects] = useState({
-    a: { name: initial.project_a_name || '', tech: initial.project_a_tech || '', link: initial.project_a_link || '' },
-    b: { name: initial.project_b_name || '', tech: initial.project_b_tech || '', link: initial.project_b_link || '' },
-    c: { name: initial.project_c_name || '', tech: initial.project_c_tech || '', link: initial.project_c_link || '' },
+function ProjectCard({ projectKey, label, dbPrefix, initial, studentDbId, showToast }) {
+  const [fields, setFields] = useState({
+    name: initial[`${dbPrefix}_name`] || '',
+    tech: initial[`${dbPrefix}_tech`] || '',
+    link: initial[`${dbPrefix}_link`] || '',
   })
   const [saving, setSaving] = useState(false)
+  // submitted = row already exists in DB for this project
+  const [submitted, setSubmitted] = useState(!!initial[`${dbPrefix}_link`])
 
-  const update = (key, field, value) => {
-    setProjects(prev => ({ ...prev, [key]: { ...prev[key], [field]: value } }))
+  const update = (field, value) => {
+    setFields(prev => ({ ...prev, [field]: value }))
   }
 
-  const hasAtLeastOneLink = projects.a.link || projects.b.link || projects.c.link
-
-  // Validate all entered links
-  const linksValid = [projects.a.link, projects.b.link, projects.c.link]
-    .every(l => isValidGithubUrl(l))
+  const linkInvalid = fields.link && !isValidGithubUrl(fields.link)
 
   const save = async () => {
-    if (!hasAtLeastOneLink) {
-      showToast('Enter at least one GitHub link.', 'error')
+    if (!fields.link || fields.link.trim() === '') {
+      showToast(`${label}: GitHub link is required.`, 'error')
       return
     }
-    if (!linksValid) {
-      showToast('Fix invalid GitHub URLs before saving.', 'error')
+    if (linkInvalid) {
+      showToast(`${label}: Fix the GitHub URL before saving.`, 'error')
       return
     }
 
     setSaving(true)
     try {
       const { error } = await db.from('students').update({
-        project_a_name: projects.a.name,
-        project_a_tech: projects.a.tech,
-        project_a_link: projects.a.link,
-        project_b_name: projects.b.name,
-        project_b_tech: projects.b.tech,
-        project_b_link: projects.b.link,
-        project_c_name: projects.c.name,
-        project_c_tech: projects.c.tech,
-        project_c_link: projects.c.link,
+        [`${dbPrefix}_name`]: nullify(fields.name),
+        [`${dbPrefix}_tech`]: nullify(fields.tech),
+        [`${dbPrefix}_link`]: nullify(fields.link),
       }).eq('id', studentDbId)
 
       if (error) {
-        showToast('Save failed: ' + error.message, 'error')
+        showToast(`${label} save failed: ` + error.message, 'error')
       } else {
-        showToast('Projects saved successfully!', 'success')
+        setSubmitted(true)
+        showToast(`${label} submitted successfully!`, 'success')
       }
     } catch {
       showToast('Connection error. Please try again.', 'error')
@@ -129,6 +55,119 @@ function SubmissionDashboard({ studentDbId, initial, onLogout, showToast }) {
       setSaving(false)
     }
   }
+
+  return (
+    <div className={`bg-[#1f1f1f] border rounded-2xl p-5 space-y-4 transition-all ${
+      submitted ? 'border-[#00FF00]/40' : 'border-[#444748]'
+    }`}>
+      {/* Card header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className="font-mono text-[12px] uppercase text-white font-bold tracking-widest">{label}</span>
+          {submitted && (
+            <span className="flex items-center gap-1 font-mono text-[10px] text-[#00FF00] tracking-widest">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#00FF00] inline-block" style={{ boxShadow: '0 0 6px #00FF00' }} />
+              SUBMITTED
+            </span>
+          )}
+        </div>
+        {submitted && (
+          <span className="material-symbols-outlined text-[#00FF00] text-[18px]">check_circle</span>
+        )}
+      </div>
+
+      {/* Fields */}
+      <div className="space-y-3">
+        <div className="group">
+          <label
+            className="font-mono text-[12px] uppercase mb-2 block text-[#8e9192] group-focus-within:text-white tracking-widest"
+            htmlFor={`${projectKey}-name`}
+          >
+            Project Name
+          </label>
+          <input
+            id={`${projectKey}-name`}
+            className="input-base"
+            placeholder="Enter project name"
+            value={fields.name}
+            onChange={e => update('name', sanitize(e.target.value))}
+            maxLength={120}
+          />
+        </div>
+
+        <div className="group">
+          <label
+            className="font-mono text-[12px] uppercase mb-2 block text-[#8e9192] group-focus-within:text-white tracking-widest"
+            htmlFor={`${projectKey}-tech`}
+          >
+            Technologies Used
+          </label>
+          <input
+            id={`${projectKey}-tech`}
+            className="input-base"
+            placeholder="e.g., Python, React, Node.js"
+            value={fields.tech}
+            onChange={e => update('tech', sanitize(e.target.value))}
+            maxLength={200}
+          />
+        </div>
+
+        <div className="group">
+          <label
+            className="font-mono text-[12px] uppercase mb-2 block text-[#8e9192] group-focus-within:text-white tracking-widest"
+            htmlFor={`${projectKey}-link`}
+          >
+            GitHub Link <span className="text-[#ffb4ab]">*</span>
+          </label>
+          <input
+            id={`${projectKey}-link`}
+            className={`input-base ${linkInvalid ? 'input-error' : ''}`}
+            placeholder="https://github.com/....."
+            value={fields.link}
+            onChange={e => update('link', e.target.value.trim())}
+            type="url"
+            maxLength={300}
+            aria-describedby={`${projectKey}-link-hint`}
+          />
+          {linkInvalid && (
+            <p id={`${projectKey}-link-hint`} className="text-[#ffb4ab] font-mono text-[11px] mt-1 px-2">
+              Must be a valid github.com URL
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Submit button for this project */}
+      <button
+        className={`w-full py-3 rounded-full font-mono text-[12px] flex items-center justify-center gap-2 transition-all active:scale-95 ${
+          submitted
+            ? 'bg-[#00FF00]/10 text-[#00FF00] border border-[#00FF00]/30 hover:bg-[#00FF00]/20'
+            : 'bg-white text-[#2f3131] hover:opacity-90'
+        }`}
+        onClick={save}
+        disabled={saving}
+        aria-busy={saving}
+      >
+        {saving ? (
+          <><Spinner /> Saving...</>
+        ) : submitted ? (
+          <><span className="material-symbols-outlined text-[16px]">edit</span> Update {label}</>
+        ) : (
+          <><span className="material-symbols-outlined text-[16px]">upload</span> Submit {label}</>
+        )}
+      </button>
+    </div>
+  )
+}
+
+// ── Submission Dashboard ──────────────────────────────────────────────────────
+
+function SubmissionDashboard({ studentDbId, initial, onLogout, showToast }) {
+  const submittedCount = [
+    initial.project_a_link,
+    initial.project_b_link,
+    initial.project_c_link,
+  ].filter(Boolean).length
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -142,45 +181,59 @@ function SubmissionDashboard({ studentDbId, initial, onLogout, showToast }) {
         </nav>
       </header>
 
-      <div className="flex items-center justify-center min-h-screen px-6 pt-16">
+      <div className="flex items-center justify-center min-h-screen px-6 pt-16 pb-8">
         <div className="max-w-[640px] w-full">
           <div className="card p-8 space-y-8">
+            {/* Header */}
             <div className="text-center space-y-2">
               <h1 className="font-sans text-[40px] font-bold leading-tight tracking-tight text-white">
-                Submit Your Project Links
+                Submit Your Projects
               </h1>
-              <p className="text-[#8e9192]">Upload your GitHub repository links for each project below.</p>
+              <p className="text-[#8e9192]">
+                Each project is submitted independently — submit whenever you're ready.
+              </p>
+              {/* Progress indicator */}
+              <div className="flex items-center justify-center gap-2 pt-2">
+                {[0, 1, 2].map(i => (
+                  <div
+                    key={i}
+                    className={`h-1 w-16 rounded-full transition-all ${
+                      i < submittedCount ? 'bg-[#00FF00]' : 'bg-[#444748]'
+                    }`}
+                  />
+                ))}
+                <span className="font-mono text-[11px] text-[#8e9192] ml-2">
+                  {submittedCount}/3 submitted
+                </span>
+              </div>
             </div>
 
+            {/* Three independent project cards */}
             <div className="space-y-4">
-              <ProjectFields
+              <ProjectCard
+                projectKey="proj-a"
                 label="Project A"
-                values={projects.a}
-                onChange={(f, v) => update('a', f, v)}
+                dbPrefix="project_a"
+                initial={initial}
+                studentDbId={studentDbId}
+                showToast={showToast}
               />
-              <ProjectFields
+              <ProjectCard
+                projectKey="proj-b"
                 label="Project B"
-                values={projects.b}
-                onChange={(f, v) => update('b', f, v)}
+                dbPrefix="project_b"
+                initial={initial}
+                studentDbId={studentDbId}
+                showToast={showToast}
               />
-              <ProjectFields
+              <ProjectCard
+                projectKey="proj-c"
                 label="Project C"
-                values={projects.c}
-                onChange={(f, v) => update('c', f, v)}
+                dbPrefix="project_c"
+                initial={initial}
+                studentDbId={studentDbId}
+                showToast={showToast}
               />
-
-              <button
-                className="btn-primary mt-8"
-                onClick={save}
-                disabled={saving}
-                aria-busy={saving}
-              >
-                {saving ? (
-                  <><Spinner /> Saving...</>
-                ) : (
-                  <>Save Projects <span className="material-symbols-outlined">save</span></>
-                )}
-              </button>
             </div>
           </div>
         </div>

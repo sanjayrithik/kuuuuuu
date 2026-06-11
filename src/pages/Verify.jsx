@@ -63,13 +63,7 @@ function NavDropdown() {
           >
             Student Login
           </a>
-          <a
-            href="/admin"
-            className="block px-4 py-3 text-sm text-[#8e9192] hover:text-white hover:bg-[#353535] font-mono tracking-widest uppercase transition-colors"
-            role="menuitem"
-          >
-            Admin Login
-          </a>
+          
         </div>
       )}
     </div>
